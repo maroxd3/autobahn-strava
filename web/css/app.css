@@ -158,6 +158,15 @@ h3 { font-size: 15px; margin: 0 0 8px; letter-spacing: -0.2px; }
   background-clip: text;
   color: transparent;
 }
+/* With no reading yet, a gradient-clipped "–" at 116px renders as a grey slab
+   that looks like a broken image. Idle gets a plain, muted, much smaller dash. */
+.live-speed b.idle {
+  font-size: 56px;
+  background: none;
+  color: var(--line);
+  -webkit-text-fill-color: var(--line);
+  letter-spacing: 0;
+}
 .live-speed small {
   display: block;
   color: var(--muted);

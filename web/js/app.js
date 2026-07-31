@@ -120,6 +120,7 @@
     }
     const s = ev.sample;
     $("#liveSpeed").textContent = Math.round(s.spd * MS_TO_KMH);
+    $("#liveSpeed").classList.remove("idle");
     $("#liveAcc").textContent = s.acc !== null ? Math.round(s.acc) : "–";
     const dist = Geo.totalDistance(recorder.samples);
     $("#liveDist").textContent = (dist / 1000).toFixed(1);
@@ -147,6 +148,7 @@
 
   function resetLive() {
     $("#liveSpeed").textContent = "–";
+    $("#liveSpeed").classList.add("idle");
     $("#liveDist").textContent = "0.0";
     $("#liveDur").textContent = "0:00";
     $("#liveAcc").textContent = "–";

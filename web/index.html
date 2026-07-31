@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Autobahn Strava — bester legaler Drive</title>
+    <meta
+      name="description"
+      content="Strava für Autobahnfahrten — Rangliste für den besten legalen Drive, nicht das höchste Tempo."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9B%A3%EF%B8%8F%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="css/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">🛣️ <span>Autobahn&nbsp;Strava</span></div>
+      <div class="who" id="whoami" title="Dein anonymer Spitzname"></div>
+    </header>
+
+    <main>
+      <!-- RECORD -->
+      <section id="tab-record" class="tab active">
+        <div class="card record-card">
+          <div class="mode-row">
+            <label class="mode-pill">
+              <input type="radio" name="mode" value="public" checked />
+              <span>🛣️ Öffentliche Straße</span>
+            </label>
+            <label class="mode-pill">
+              <input type="radio" name="mode" value="track" />
+              <span>🏁 Track (privat)</span>
+            </label>
+          </div>
+          <p class="mode-hint" id="modeHint">
+            Bewertet nur legales, ruhiges &amp; effizientes Fahren. Kein Tempo-Ranking.
+          </p>
+
+          <div class="live" id="live">
+            <div class="live-speed"><b id="liveSpeed">–</b><small>km/h (GPS-Schätzung)</small></div>
+            <div class="live-stats">
+              <div><span id="liveDist">0.0</span><small>km</small></div>
+              <div><span id="liveDur">0:00</span><small>Zeit</small></div>
+              <div><span id="liveAcc">–</span><small>± m GPS</small></div>
+            </div>
+          </div>
+
+          <div class="safety-note" id="safetyNote">
+            ⚠️ <b>Vor dem Losfahren</b> starten, Handy in die Halterung, während der Fahrt
+            <b>nicht</b> bedienen. Aufnahme läuft automatisch.
+          </div>
+
+          <div class="btn-row">
+            <button id="btnStart" class="btn btn-primary">● Aufnahme starten</button>
+            <button id="btnStop" class="btn btn-danger" hidden>■ Stopp &amp; speichern</button>
+          </div>
+          <button id="btnSim" class="btn btn-ghost">▷ Beispiel-Fahrt simulieren (A2)</button>
+          <p class="tiny muted">
+            Simulation zum Ausprobieren ohne echte Fahrt — erzeugt eine plausible A2-Aufnahme.
+          </p>
+        </div>
+      </section>
+
+      <!-- TRIPS -->
+      <section id="tab-trips" class="tab">
+        <h2>Deine Fahrten</h2>
+        <div id="tripList" class="list"></div>
+      </section>
+
+      <!-- LEADERBOARD -->
+      <section id="tab-board" class="tab">
+        <h2>Rangliste</h2>
+        <div class="row-inline">
+          <select id="boardSegment" class="select"></select>
+          <select id="boardSort" class="select">
+            <option value="score">🏆 Bester legaler Drive</option>
+            <option value="legalSpeed">⚡ Schnellste legale Fahrt</option>
+          </select>
+        </div>
+        <p class="tiny muted">
+          Ranking nach Fahrqualität (Legalität, Ruhe, Bremsen, Effizienz) — nicht nach Spitzentempo.
+          Demo-Einträge sind synthetisch markiert.
+        </p>
+        <div id="boardList" class="list"></div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="tab-settings" class="tab">
+        <h2>Profil &amp; Privatsphäre</h2>
+        <div class="card">
+          <label class="field">
+            <span>Spitzname (kein Klarname)</span>
+            <span class="row-inline">
+              <input id="nick" class="input" type="text" maxlength="24" />
+              <button id="btnReroll" class="btn btn-ghost">🎲</button>
+            </span>
+          </label>
+          <label class="toggle">
+            <input id="optTrim" type="checkbox" />
+            <span>Erste &amp; letzte 500 m jeder Route entfernen</span>
+          </label>
+          <label class="toggle">
+            <input id="optPrivate" type="checkbox" />
+            <span>Neue Fahrten standardmäßig privat</span>
+          </label>
+          <button id="btnSaveProfile" class="btn btn-primary">Speichern</button>
+        </div>
+        <div class="card danger-card">
+          <h3>Daten löschen</h3>
+          <p class="tiny muted">
+            Alle Fahrten &amp; dein Profil werden vollständig von diesem Gerät entfernt.
+          </p>
+          <button id="btnWipe" class="btn btn-danger">Alles löschen</button>
+        </div>
+        <p class="tiny muted">
+          GPS-Tempo ist eine Schätzung, keine amtliche Messung. Alle Daten liegen nur lokal
+          auf diesem Gerät.
+        </p>
+      </section>
+    </main>
+
+    <nav class="tabbar">
+      <button data-tab="record" class="active">● Aufnahme</button>
+      <button data-tab="trips">Fahrten</button>
+      <button data-tab="board">Rangliste</button>
+      <button data-tab="settings">Profil</button>
+    </nav>
+
+    <!-- Trip detail modal -->
+    <div id="modal" class="modal" hidden>
+      <div class="modal-box" id="modalBox"></div>
+    </div>
+
+    <script src="js/segments.js"></script>
+    <script src="js/geo.js"></script>
+    <script src="js/score.js"></script>
+    <script src="js/store.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

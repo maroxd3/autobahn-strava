@@ -8,7 +8,9 @@
 (function (global) {
   "use strict";
 
-  const SEGMENTS = [
+  // Hand-curated sections, kept because they have verified limits and seeded
+  // leaderboards. Everything else is created automatically from real drives.
+  const CURATED = [
     {
       id: "a2-hannover-braunschweig",
       autobahn: "A2",
@@ -87,8 +89,42 @@
     return 2 * R * Math.asin(Math.sqrt(h));
   }
 
-  // Match a trip (array of {lat, lon}) to the best segment, or null.
-  // START_RADIUS / END_RADIUS give tolerance around junction points.
+  // ---- Road types -----------------------------------------------------------
+  // What the user declares for a new route, and the limit it implies. Autobahn
+  // has no fixed general limit, so it scores against the Richtgeschwindigkeit
+  // instead (handled in score.js) rather than against a number here.
+  const ROAD_TYPES = {
+    autobahn: { label: "Autobahn (kein festes Limit)", limitKmh: null, tag: "BAB" },
+    "autobahn-limit": { label: "Autobahn mit Tempolimit 120", limitKmh: 120, tag: "BAB" },
+    landstrasse: { label: "Landstraße (100)", limitKmh: 100, tag: "L" },
+    stadt: { label: "Innerorts (50)", limitKmh: 50, tag: "O" },
+  };
+
+  // ---- User-created segments ------------------------------------------------
+  // Stored next to the trips, on the device only. A segment holds just its two
+  // endpoints — no route geometry — so it reveals no more than a trip already does.
+  const KEY_CUSTOM = "as_custom_segments";
+
+  function custom() {
+    try {
+      return JSON.parse(localStorage.getItem(KEY_CUSTOM) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveCustom(list) {
+    localStorage.setItem(KEY_CUSTOM, JSON.stringify(list));
+  }
+
+  // Curated first, so a hand-verified section always wins over a generated one.
+  function all() {
+    return CURATED.concat(custom());
+  }
+
+  // Match a trip (array of {lat, lon}) to the best known segment, or null.
+  // Tolerance around each endpoint keeps the same commute matching itself even
+  // though you never start from the exact same metre.
   function detectSegment(points, opts) {
     opts = opts || {};
     const startRadius = opts.startRadius || 6000; // metres
@@ -99,7 +135,7 @@
     const end = points[points.length - 1];
 
     let best = null;
-    for (const seg of SEGMENTS) {
+    for (const seg of all()) {
       const dStart = haversine(start, seg.from);
       const dEnd = haversine(end, seg.to);
       if (dStart <= startRadius && dEnd <= endRadius) {
@@ -110,9 +146,68 @@
     return best ? best.segment : null;
   }
 
-  function byId(id) {
-    return SEGMENTS.find((s) => s.id === id) || null;
+  // Create and persist a segment from a drive that matched nothing yet.
+  // Returns null for trips too short to be worth ranking.
+  const MIN_SEGMENT_M = 3000;
+
+  function createFromTrip(points, roadType) {
+    if (!points || points.length < 2) return null;
+    const from = points[0];
+    const to = points[points.length - 1];
+    if (haversine(from, to) < MIN_SEGMENT_M) return null;
+
+    const type = ROAD_TYPES[roadType] ? roadType : "autobahn";
+    const seg = {
+      id: "auto-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      autobahn: ROAD_TYPES[type].tag,
+      name: global.Places ? global.Places.routeName(from, to) : "Eigene Strecke",
+      from: { name: "Start", lat: from.lat, lon: from.lon },
+      to: { name: "Ziel", lat: to.lat, lon: to.lon },
+      limitKmh: ROAD_TYPES[type].limitKmh,
+      roadType: type,
+      custom: true,
+    };
+    const list = custom();
+    list.push(seg);
+    saveCustom(list);
+    return seg;
   }
 
-  global.Segments = { list: SEGMENTS, haversine, detectSegment, byId };
+  // The whole point of auto-segments: every drive lands on *some* leaderboard.
+  function matchOrCreate(points, roadType) {
+    return detectSegment(points) || createFromTrip(points, roadType);
+  }
+
+  function renameCustom(id, name) {
+    const list = custom();
+    const s = list.find((x) => x.id === id);
+    if (s) {
+      s.name = name;
+      saveCustom(list);
+    }
+    return s || null;
+  }
+
+  function deleteCustom(id) {
+    saveCustom(custom().filter((s) => s.id !== id));
+  }
+
+  function byId(id) {
+    return all().find((s) => s.id === id) || null;
+  }
+
+  global.Segments = {
+    list: CURATED,
+    all,
+    custom,
+    haversine,
+    detectSegment,
+    createFromTrip,
+    matchOrCreate,
+    renameCustom,
+    deleteCustom,
+    byId,
+    ROAD_TYPES,
+    MIN_SEGMENT_M,
+  };
 })(typeof window !== "undefined" ? window : globalThis);

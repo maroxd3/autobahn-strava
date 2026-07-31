@@ -100,6 +100,9 @@
   function deleteAll() {
     localStorage.removeItem(KEY_TRIPS);
     localStorage.removeItem(KEY_PROFILE);
+    // Self-created routes are derived from where the user drove, so "delete
+    // everything" has to take them too — otherwise endpoints survive the wipe.
+    localStorage.removeItem("as_custom_segments");
   }
 
   function newId() {

@@ -42,6 +42,10 @@
             <span>Wohin fährst du?</span>
             <select id="routeSelect" class="select"></select>
           </label>
+          <label class="field" id="roadTypeField">
+            <span>Straßentyp (für neue Strecken)</span>
+            <select id="roadTypeSelect" class="select"></select>
+          </label>
           <p class="tiny muted" id="routeHint"></p>
 
           <div class="live" id="live">
@@ -140,9 +144,11 @@
     </div>
 
     <script src="js/segments.js"></script>
+    <script src="js/places.js"></script>
     <script src="js/geo.js"></script>
     <script src="js/score.js"></script>
     <script src="js/store.js"></script>
+    <script src="js/replay.js"></script>
     <script src="js/app.js"></script>
   </body>
 </html>

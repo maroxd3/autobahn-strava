@@ -41,13 +41,27 @@
   // which leaderboard the trip belongs to, and lets us show the applicable limit
   // before you set off rather than after.
   function initRouteControls() {
-    const sel = $("#routeSelect");
-    sel.innerHTML =
-      `<option value="">Automatisch erkennen</option>` +
-      Segments.list.map((s) => `<option value="${s.id}">${s.autobahn} ${s.name}</option>`).join("");
-    sel.addEventListener("change", updateRouteHint);
+    const rt = $("#roadTypeSelect");
+    rt.innerHTML = Object.entries(Segments.ROAD_TYPES)
+      .map(([k, v]) => `<option value="${k}">${v.label}</option>`)
+      .join("");
+    rt.addEventListener("change", updateRouteHint);
+    fillRouteSelect();
+    $("#routeSelect").addEventListener("change", updateRouteHint);
     updateRouteHint();
   }
+
+  // Rebuilt after every drive, because a drive can create a new segment.
+  function fillRouteSelect() {
+    const sel = $("#routeSelect");
+    const keep = sel.value;
+    sel.innerHTML =
+      `<option value="">Automatisch — neue Strecke anlegen</option>` +
+      Segments.all().map((s) => `<option value="${s.id}">${s.autobahn} ${s.name}</option>`).join("");
+    sel.value = keep;
+  }
+
+  const currentRoadType = () => $("#roadTypeSelect").value;
 
   function declaredRoute() {
     return Segments.byId($("#routeSelect").value) || null;
@@ -59,8 +73,15 @@
     $("#btnSim").textContent = `▷ Beispiel-Fahrt simulieren (${seg ? seg.autobahn : "A2"})`;
     // Point the leaderboard at the route you just declared.
     if (seg) $("#boardSegment").value = seg.id;
+    // The road type only decides the limit for a route we haven't seen before.
+    $("#roadTypeField").hidden = !!seg;
     if (!seg) {
-      el.textContent = "Ohne Auswahl wird die Strecke nach der Fahrt automatisch erkannt.";
+      const rt = Segments.ROAD_TYPES[currentRoadType()];
+      el.textContent =
+        `Passt die Fahrt zu keiner bekannten Strecke, wird sie als neue Strecke angelegt — ` +
+        (rt.limitKmh
+          ? `gewertet gegen ${rt.limitKmh} km/h.`
+          : `gewertet gegen die Richtgeschwindigkeit ${Score.RICHTGESCHWINDIGKEIT} km/h.`);
       return;
     }
     el.textContent = seg.limitKmh
@@ -139,8 +160,15 @@
     // A declared route only counts if the recorded track actually backs it up —
     // otherwise you could pick an easy segment and drive somewhere else entirely.
     // When the two disagree, the GPS wins and we say so on the trip.
-    const detected = mode === "public" ? Segments.detectSegment(samples) : null;
+    // No declaration means "whatever this drive was" — match a known segment, or
+    // mint one from the drive itself so every trip lands on some leaderboard.
     const declared = mode === "public" ? declaredRoute() : null;
+    const detected =
+      mode === "public"
+        ? declared
+          ? Segments.detectSegment(samples)
+          : Segments.matchOrCreate(samples, currentRoadType())
+        : null;
     const routeMismatch = !!declared && (!detected || detected.id !== declared.id);
     const segment = detected;
 
@@ -181,6 +209,10 @@
     };
 
     Store.saveTrip(trip);
+    // The drive may have created a segment — get it into both pickers.
+    fillRouteSelect();
+    fillBoardSelect();
+    if (segment) $("#boardSegment").value = segment.id;
     showTab("trips");
     openTrip(trip.id);
   }
@@ -258,6 +290,13 @@
       </div>
       ${t.cheatFlags && t.cheatFlags.length ? `<p class="tiny" style="color:var(--warn);margin-top:10px">⚠︎ Plausibilitätshinweise: ${t.cheatFlags.join(", ")} — nicht für die Rangliste gewertet.</p>` : ``}
       ${!t.eligible && t.mode === "public" && (!t.cheatFlags || !t.cheatFlags.length) && !t.segmentId ? `<p class="tiny muted" style="margin-top:10px">Kein bekanntes Autobahn-Segment erkannt — zählt nicht für eine Rangliste.</p>` : ``}
+      ${ghostRival(t) ? `
+        <div id="replayWrap" style="margin-top:14px" hidden>
+          <canvas id="replayCanvas" style="width:100%;display:block"></canvas>
+          <p class="tiny muted" id="replayResult"></p>
+        </div>
+        <button class="btn btn-ghost" id="mReplay" style="margin-top:10px">👻 Ghost-Replay gegen ${esc(ghostRival(t).nickname)}</button>
+      ` : ``}
       <div class="btn-row" style="margin-top:16px">
         <button class="btn" id="mPriv">${t.private ? "🌍 Teilen" : "🔒 Privat"}</button>
         <button class="btn btn-danger" id="mDel">Löschen</button>
@@ -270,13 +309,18 @@
     $("#mDel").addEventListener("click", () => {
       if (confirm("Diese Fahrt löschen?")) { Store.deleteTrip(t.id); closeModal(); renderTrips(); }
     });
+    if ($("#mReplay")) $("#mReplay").addEventListener("click", () => startGhostReplay(t));
     $("#mPriv").addEventListener("click", () => {
       Store.setTripPrivacy(t.id, !t.private);
       openTrip(t.id);
       renderTrips();
     });
   }
-  function closeModal() { $("#modal").hidden = true; }
+  function closeModal() {
+    // Leave no animation frame running behind a hidden modal.
+    if (stopReplay) { stopReplay(); stopReplay = null; }
+    $("#modal").hidden = true;
+  }
 
   function bar(label, val) {
     return `<div class="comp-bar"><div class="lab"><span>${label}</span><span>${val}</span></div>
@@ -309,16 +353,96 @@
     </svg>`;
   }
 
+  // ---- Ghost Replay ---------------------------------------------------------
+  // Race this drive against the best drive on the same segment.
+  function ghostRival(t) {
+    if (!t || t.mode !== "public" || !t.segmentId) return null;
+    const rows = Store.leaderboard(t.segmentId, "score").filter((r) => r.id !== t.id);
+    if (rows.length) return rows[0];
+
+    // A route you created yourself has no seeded ghosts, and your own trips stay
+    // private by default — so without this, the newest segments would be the only
+    // ones you can never race on. Fall back to your own best previous drive here.
+    const own = Store.getTrips()
+      .filter((x) => x.id !== t.id && x.segmentId === t.segmentId && x.mode === "public")
+      .sort((a, b) => b.score.total - a.score.total)[0];
+    if (!own) return null;
+    return {
+      id: own.id,
+      nickname: "Deine beste Fahrt",
+      score: own.score.total,
+      avgKmh: Math.round(own.avgKmh),
+      sustainedKmh: Math.round(own.sustainedKmh),
+      hardBraking: own.score.hardBrakingEvents,
+    };
+  }
+
+  let stopReplay = null;
+
+  function startGhostReplay(t) {
+    const rival = ghostRival(t);
+    if (!rival) return;
+    if (stopReplay) stopReplay();
+
+    // A real rival trip carries its own speed track. The seeded demo ghosts only
+    // have summary stats, so their drive is reconstructed over the same distance
+    // this trip covered — same road, same length, different driving.
+    const rivalTrip = Store.getTrips().find((x) => x.id === rival.id);
+    const rivalDur = t.distanceM / Math.max(1, rival.avgKmh / 3.6);
+    const rivalTrack =
+      rivalTrip && rivalTrip.speedTrack && rivalTrip.speedTrack.length
+        ? rivalTrip.speedTrack
+        : Replay.syntheticTrack(rival, rivalDur);
+
+    $("#replayWrap").hidden = false;
+    $("#replayResult").textContent = "Läuft …";
+    $("#mReplay").textContent = "↻ Replay wiederholen";
+
+    stopReplay = Replay.race($("#replayCanvas"), {
+      yourTrack: t.speedTrack,
+      rivalTrack,
+      rivalLabel: rival.nickname,
+      onEnd: (r) => {
+        const gap = Math.abs(Math.round(r.gap));
+        const youWon = r.gap < 0;
+        const winner = youWon ? "Du" : esc(rival.nickname);
+        const myBrakes = t.score.hardBrakingEvents;
+        const theirBrakes = rival.hardBraking;
+        const winnerBrakes = youWon ? myBrakes : theirBrakes;
+        const loserBrakes = youWon ? theirBrakes : myBrakes;
+        // The line that makes the point: what did the time actually cost?
+        const cost =
+          winnerBrakes > loserBrakes
+            ? ` — dafür ${winnerBrakes}× hart gebremst statt ${loserBrakes}×.`
+            : winnerBrakes < loserBrakes
+            ? ` — und dabei ruhiger gefahren (${winnerBrakes}× hart gebremst statt ${loserBrakes}×).`
+            : ".";
+        $("#replayResult").innerHTML =
+          gap === 0
+            ? `Gleichzeitig am Ziel. Score ${t.score.total} zu ${rival.score}.`
+            : `${winner} ${gap} s früher am Ziel${cost} Score ${t.score.total} zu ${rival.score}.`;
+      },
+    });
+  }
+
   // ---- Leaderboard ----------------------------------------------------------
   function initBoardControls() {
-    const sel = $("#boardSegment");
-    sel.innerHTML = Segments.list.map((s) => `<option value="${s.id}">${s.autobahn} ${s.name}</option>`).join("");
-    sel.addEventListener("change", renderBoard);
+    fillBoardSelect();
+    $("#boardSegment").addEventListener("change", renderBoard);
     $("#boardSort").addEventListener("change", renderBoard);
   }
 
+  function fillBoardSelect() {
+    const sel = $("#boardSegment");
+    const keep = sel.value;
+    sel.innerHTML = Segments.all()
+      .map((s) => `<option value="${s.id}">${s.autobahn} ${s.name}</option>`)
+      .join("");
+    if (keep) sel.value = keep;
+  }
+
   function renderBoard() {
-    const segId = $("#boardSegment").value || Segments.list[0].id;
+    const segId = $("#boardSegment").value || Segments.all()[0].id;
     const sort = $("#boardSort").value;
     const rows = Store.leaderboard(segId, sort);
     const el = $("#boardList");

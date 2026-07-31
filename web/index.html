@@ -93,6 +93,7 @@
           Ranking nach Fahrqualität (Legalität, Ruhe, Bremsen, Effizienz) — nicht nach Spitzentempo.
           Demo-Einträge sind synthetisch markiert.
         </p>
+        <p class="tiny muted" id="boardNote"></p>
         <div id="boardList" class="list"></div>
       </section>
 
@@ -116,6 +117,24 @@
             <span>Neue Fahrten standardmäßig privat</span>
           </label>
           <button id="btnSaveProfile" class="btn btn-primary">Speichern</button>
+        </div>
+        <div class="card">
+          <h3>Online-Rangliste</h3>
+          <label class="toggle">
+            <input id="optCloud" type="checkbox" />
+            <span>Mit anderen Fahrern vergleichen</span>
+          </label>
+          <p class="tiny muted">
+            Standardmäßig aus. Ist sie an, kannst du einzelne Fahrten veröffentlichen — dann
+            werden Spitzname, Wertung, Tempo-Kennzahlen und der reduzierte Tempo-Verlauf
+            übertragen, dazu Start- und Zielpunkt der Strecke (nach dem 500-m-Trimmen), damit
+            Fahrten überhaupt einander zugeordnet werden können.
+            <b>Der gefahrene Weg wird nie übertragen.</b>
+            Es gibt kein Konto: die Anmeldung ist anonym, ohne Name oder E-Mail.
+            Daten liegen in der EU. Ohne Veröffentlichung verlässt nichts das Gerät.
+          </p>
+          <p class="tiny muted" id="cloudStatus"></p>
+          <button id="btnCloudWipe" class="btn btn-ghost">Meine Online-Daten löschen</button>
         </div>
         <div class="card danger-card">
           <h3>Daten löschen</h3>
@@ -148,6 +167,7 @@
     <script src="js/geo.js"></script>
     <script src="js/score.js"></script>
     <script src="js/store.js"></script>
+    <script src="js/cloud.js"></script>
     <script src="js/replay.js"></script>
     <script src="js/app.js"></script>
   </body>

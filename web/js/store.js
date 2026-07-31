@@ -97,6 +97,17 @@
     }
   }
 
+  // Remembers which online entry a trip became, so it can't be published twice
+  // and so the entry can be withdrawn later.
+  function setTripPublished(id, entryId) {
+    const trips = getTrips();
+    const t = trips.find((x) => x.id === id);
+    if (t) {
+      t.publishedId = entryId;
+      localStorage.setItem(KEY_TRIPS, JSON.stringify(trips));
+    }
+  }
+
   function deleteAll() {
     localStorage.removeItem(KEY_TRIPS);
     localStorage.removeItem(KEY_PROFILE);
@@ -168,6 +179,7 @@
     saveTrip,
     deleteTrip,
     setTripPrivacy,
+    setTripPublished,
     deleteAll,
     newId,
     leaderboard,

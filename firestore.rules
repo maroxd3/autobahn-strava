@@ -1,0 +1,98 @@
+rules_version = '2';
+
+// Autobahn Strava — shared leaderboard rules.
+//
+// Threat model, stated plainly: scores are computed on the client, so these
+// rules cannot prove an entry is genuine. They can only enforce that a value is
+// physically possible, that you may write only under your own uid, and that you
+// can always delete your own data. Real anti-cheat needs server-side scoring
+// (Cloud Functions, which require the Blaze plan) — until then, treat the board
+// as friendly competition, not evidence.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function num(v, lo, hi) {
+      return v is number && v >= lo && v <= hi;
+    }
+
+    function shortText(v, maxLen) {
+      return v is string && v.size() > 0 && v.size() <= maxLen;
+    }
+
+    function latLon(p) {
+      return p.keys().hasOnly(['lat', 'lon'])
+        && num(p.lat, -90, 90)
+        && num(p.lon, -180, 180);
+    }
+
+    // ---- Shared route registry ---------------------------------------------
+    // Endpoints only — never a path. A segment reveals no more than the two
+    // trimmed endpoints a trip already exposes.
+    match /segments/{segmentId} {
+      allow read: if true;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(
+             ['name', 'autobahn', 'roadType', 'limitKmh', 'from', 'to', 'createdBy', 'createdAt'])
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && shortText(request.resource.data.name, 80)
+        && shortText(request.resource.data.autobahn, 12)
+        && request.resource.data.roadType in ['autobahn', 'autobahn-limit', 'landstrasse', 'stadt']
+        && (request.resource.data.limitKmh == null || num(request.resource.data.limitKmh, 5, 200))
+        && latLon(request.resource.data.from)
+        && latLon(request.resource.data.to);
+
+      // Renaming a shared route is allowed only for whoever created it, and only
+      // the name may change — nobody gets to move a segment out from under the
+      // entries already attached to it.
+      allow update: if signedIn()
+        && resource.data.createdBy == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && shortText(request.resource.data.name, 80);
+
+      allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
+    }
+
+    // ---- Leaderboard entries ------------------------------------------------
+    match /entries/{entryId} {
+      allow read: if true;
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(
+             ['segmentId', 'uid', 'nickname', 'score', 'avgKmh', 'sustainedKmh',
+              'hardBraking', 'distanceM', 'durationSec', 'speedTrack', 'area',
+              'roadType', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && shortText(request.resource.data.segmentId, 128)
+        && shortText(request.resource.data.nickname, 32)
+        && num(request.resource.data.score, 0, 100)
+        // Speed ceilings are plausibility limits, not endorsements: anything
+        // above these is a broken GPS trace or a forged entry, either way junk.
+        && num(request.resource.data.avgKmh, 0, 250)
+        && num(request.resource.data.sustainedKmh, 0, 300)
+        && num(request.resource.data.hardBraking, 0, 500)
+        && num(request.resource.data.distanceM, 0, 2000000)
+        && num(request.resource.data.durationSec, 0, 86400)
+        && request.resource.data.roadType in ['autobahn', 'autobahn-limit', 'landstrasse', 'stadt']
+        && (request.resource.data.area == null || shortText(request.resource.data.area, 60))
+        // The trimmed speed track is the most detail we ever upload, and it is
+        // capped so nobody can smuggle a high-resolution trace through it.
+        && request.resource.data.speedTrack is list
+        && request.resource.data.speedTrack.size() <= 120;
+
+      // Entries are immutable: an edit would let a published result be rewritten
+      // after others have already been ranked against it. Delete and re-publish.
+      allow update: if false;
+
+      // Right to erasure — always available, without asking anyone.
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+  }
+}

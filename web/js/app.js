@@ -297,6 +297,11 @@
         </div>
         <button class="btn btn-ghost" id="mReplay" style="margin-top:10px">👻 Ghost-Replay gegen ${esc(ghostRival(t).nickname)}</button>
       ` : ``}
+      ${Cloud.isEnabled() && t.eligible && t.mode === "public" ? `
+        <button class="btn btn-ghost" id="mPublish" style="margin-top:10px"${t.publishedId ? " disabled" : ""}>
+          ${t.publishedId ? "✓ In der Online-Rangliste" : "🌐 In Online-Rangliste veröffentlichen"}
+        </button>
+      ` : ``}
       <div class="btn-row" style="margin-top:16px">
         <button class="btn" id="mPriv">${t.private ? "🌍 Teilen" : "🔒 Privat"}</button>
         <button class="btn btn-danger" id="mDel">Löschen</button>
@@ -310,6 +315,25 @@
       if (confirm("Diese Fahrt löschen?")) { Store.deleteTrip(t.id); closeModal(); renderTrips(); }
     });
     if ($("#mReplay")) $("#mReplay").addEventListener("click", () => startGhostReplay(t));
+    if ($("#mPublish") && !t.publishedId) {
+      $("#mPublish").addEventListener("click", async () => {
+        const btn = $("#mPublish");
+        const seg = Segments.byId(t.segmentId);
+        if (!seg) return;
+        btn.disabled = true;
+        btn.textContent = "Wird veröffentlicht …";
+        try {
+          const area = Places ? Places.nearest(seg.from, 40) : null;
+          const entryId = await Cloud.publishTrip(t, seg, area);
+          Store.setTripPublished(t.id, entryId);
+          openTrip(t.id);
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = "🌐 In Online-Rangliste veröffentlichen";
+          alert("Veröffentlichen fehlgeschlagen: " + e.message);
+        }
+      });
+    }
     $("#mPriv").addEventListener("click", () => {
       Store.setTripPrivacy(t.id, !t.private);
       openTrip(t.id);
@@ -444,7 +468,43 @@
   function renderBoard() {
     const segId = $("#boardSegment").value || Segments.all()[0].id;
     const sort = $("#boardSort").value;
-    const rows = Store.leaderboard(segId, sort);
+    drawBoard(Store.leaderboard(segId, sort), sort);
+    // Online rows arrive over the network, so paint the local board immediately
+    // and fold them in when they land — the board is never blank while waiting.
+    if (Cloud.isEnabled()) mergeOnlineRows(segId, sort);
+  }
+
+  async function mergeOnlineRows(segId, sort) {
+    let online;
+    try {
+      online = await Cloud.leaderboard(segId, sort, 25);
+    } catch (e) {
+      $("#boardNote").textContent = "Online-Rangliste nicht erreichbar: " + e.message;
+      return;
+    }
+    // The board may have been switched while the request was in flight.
+    if ($("#boardSegment").value !== segId || $("#boardSort").value !== sort) return;
+
+    const local = Store.leaderboard(segId, sort);
+    // A published trip exists both locally and online; keep the online copy so
+    // it is not counted twice.
+    const publishedIds = new Set(
+      Store.getTrips().map((t) => t.publishedId).filter(Boolean)
+    );
+    const merged = local
+      .filter((r) => !r.id || !publishedIds.has(r.id))
+      .concat(online.map((r) => ({ ...r, nickname: r.nickname, hardBraking: r.hardBraking })));
+
+    merged.sort((a, b) =>
+      sort === "legalSpeed" ? b.sustainedKmh - a.sustainedKmh : b.score - a.score
+    );
+    drawBoard(merged, sort);
+    $("#boardNote").textContent = online.length
+      ? `${online.length} Einträge aus der Online-Rangliste.`
+      : "Noch keine Online-Einträge für diese Strecke.";
+  }
+
+  function drawBoard(rows, sort) {
     const el = $("#boardList");
     if (!rows.length) {
       el.innerHTML = `<p class="muted tiny">Noch keine gewerteten Fahrten für dieses Segment.</p>`;
@@ -460,6 +520,7 @@
           <div class="lb-main">
             <div class="lb-name">${esc(r.nickname)}
               ${r.demo ? `<span class="badge demo">Demo</span>` : ``}
+              ${r.online ? `<span class="badge demo">Online</span>` : ``}
               ${r.mine ? `<span class="badge mine">Du</span>` : ``}
             </div>
             <div class="lb-sub">⌀ ${r.avgKmh} km/h · gehalten ${r.sustainedKmh} km/h · ${r.hardBraking} starke Bremsungen</div>
@@ -492,6 +553,45 @@
         alert("Alle lokalen Daten gelöscht.");
       }
     });
+
+    $("#optCloud").checked = Cloud.isEnabled();
+    updateCloudStatus();
+    $("#optCloud").addEventListener("change", async () => {
+      const on = $("#optCloud").checked;
+      Cloud.setEnabled(on);
+      if (on) {
+        // Fail loudly and switch back off rather than leaving the user believing
+        // publishing works when the backend will reject every write.
+        try {
+          await Cloud.signIn();
+        } catch (e) {
+          Cloud.setEnabled(false);
+          $("#optCloud").checked = false;
+          alert("Online-Rangliste nicht verfügbar: " + e.message);
+        }
+      }
+      updateCloudStatus();
+      renderTrips();
+    });
+
+    $("#btnCloudWipe").addEventListener("click", async () => {
+      if (!confirm("Alle von diesem Gerät veröffentlichten Einträge aus der Online-Rangliste löschen?")) return;
+      try {
+        const n = await Cloud.deleteAllMine();
+        alert(n + " Einträge gelöscht.");
+        updateCloudStatus();
+      } catch (e) {
+        alert("Löschen fehlgeschlagen: " + e.message);
+      }
+    });
+  }
+
+  function updateCloudStatus() {
+    const el = $("#cloudStatus");
+    if (!el) return;
+    el.textContent = Cloud.isEnabled()
+      ? "Aktiv. Anonyme ID: " + (Cloud.uid() ? Cloud.uid().slice(0, 8) + "…" : "noch keine")
+      : "Aus — es werden keine Daten übertragen.";
   }
 
   // ---- Simulated drive (for trying the app without a real trip) -------------

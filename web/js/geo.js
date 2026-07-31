@@ -17,14 +17,74 @@
     this.onSample = onSample || function () {};
   }
 
+  // True inside the Capacitor shell, false in a browser or an installed PWA.
+  function isNative() {
+    const C = global.Capacitor;
+    return !!(C && typeof C.isNativePlatform === "function" && C.isNativePlatform());
+  }
+
+  function nativePlugin() {
+    const C = global.Capacitor;
+    return (C && C.Plugins && C.Plugins.BackgroundGeolocation) || null;
+  }
+
   Recorder.prototype.start = function () {
-    if (!("geolocation" in navigator)) throw new Error("Geolocation not supported on this device.");
     this.samples = [];
+    // The browser API stops the moment the screen locks or the user switches
+    // apps, which is precisely when a drive is being recorded. Inside the native
+    // shell, use the background watcher so a locked phone in a mount keeps
+    // recording — this is the reason the app is wrapped natively at all.
+    return isNative() && nativePlugin() ? this._startNative() : this._startWeb();
+  };
+
+  Recorder.prototype._startWeb = function () {
+    if (!("geolocation" in navigator)) throw new Error("Geolocation not supported on this device.");
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => this._push(pos),
       (err) => this.onSample({ error: err.message || String(err) }),
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     );
+    return this;
+  };
+
+  Recorder.prototype._startNative = function () {
+    const plugin = nativePlugin();
+    this.native = plugin;
+    plugin
+      .addWatcher(
+        {
+          // Shown in the Android notification and the iOS location indicator.
+          backgroundMessage: "Fahrt wird aufgezeichnet.",
+          backgroundTitle: "Autobahn Strava",
+          requestPermissions: true,
+          stale: false,
+          distanceFilter: 10,
+        },
+        (location, error) => {
+          if (error) {
+            // The user can deny "always" permission and still grant it later, so
+            // surface it rather than silently recording nothing.
+            this.onSample({ error: error.message || String(error.code || error) });
+            return;
+          }
+          if (!location) return;
+          // Normalise the plugin's shape into the browser Position shape so
+          // _push stays the single place that builds a sample.
+          this._push({
+            timestamp: location.time || Date.now(),
+            coords: {
+              latitude: location.latitude,
+              longitude: location.longitude,
+              accuracy: location.accuracy,
+              speed: typeof location.speed === "number" ? location.speed : null,
+            },
+          });
+        }
+      )
+      .then((id) => {
+        this.watchId = id;
+      })
+      .catch((e) => this.onSample({ error: e.message || String(e) }));
     return this;
   };
 
@@ -53,10 +113,18 @@
   };
 
   Recorder.prototype.stop = function () {
-    if (this.watchId !== null) navigator.geolocation.clearWatch(this.watchId);
+    if (this.watchId !== null) {
+      if (this.native) this.native.removeWatcher({ id: this.watchId }).catch(() => {});
+      else navigator.geolocation.clearWatch(this.watchId);
+    }
     this.watchId = null;
+    this.native = null;
     return this.samples.slice();
   };
+
+  // Exposed so the UI can tell the user whether a locked screen will keep
+  // recording, instead of letting them find out after a ruined drive.
+  Recorder.backgroundCapable = () => isNative() && !!nativePlugin();
 
   // ---- Derived trip metrics from a list of samples --------------------------
 

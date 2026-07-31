@@ -646,6 +646,16 @@
   function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
   // ---- Boot -----------------------------------------------------------------
+  // Say plainly whether a locked screen keeps recording. In the browser it does
+  // not, and finding that out after a ruined 40 km drive is the worst way to
+  // learn it.
+  if (!Geo.Recorder.backgroundCapable()) {
+    $("#safetyNote").insertAdjacentHTML(
+      "beforeend",
+      `<br /><b>Bildschirm an lassen</b> — im Browser stoppt die Aufnahme, sobald das Handy sperrt.`
+    );
+  }
+
   refreshWho();
   initBoardControls(); // before initRouteControls — route sync writes to its <select>
   initRouteControls();

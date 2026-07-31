@@ -1,0 +1,15 @@
+{
+  "appId": "de.autobahnstrava.app",
+  "appName": "Autobahn Strava",
+  "webDir": "web",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#0f1216"
+  },
+  "ios": {
+    "backgroundColor": "#0f1216",
+    "contentInset": "always"
+  }
+}

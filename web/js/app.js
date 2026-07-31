@@ -535,31 +535,61 @@
 
   function drawBoard(rows, sort) {
     const el = $("#boardList");
+    const seg = Segments.byId($("#boardSegment").value);
+
+    // The shield belongs here, once, rather than repeated on every row — every
+    // row on a board is by definition the same segment.
+    $("#boardHead").innerHTML = seg
+      ? `<div class="board-head">
+           ${shield(seg)}
+           <div class="board-head-main">
+             <div class="board-head-name">${esc(seg.name)}</div>
+             <div class="board-head-sub">${
+               seg.limitKmh
+                 ? seg.limitKmh + " km/h Limit"
+                 : "Richtgeschwindigkeit " + Score.RICHTGESCHWINDIGKEIT + " km/h"
+             }</div>
+           </div>
+         </div>`
+      : "";
+
     if (!rows.length) {
       el.innerHTML = `<p class="muted tiny">Noch keine gewerteten Fahrten für dieses Segment.</p>`;
       return;
     }
+
+    const lead = rows[0];
     el.innerHTML = rows
       .map((r, i) => {
         const primary = sort === "legalSpeed"
-          ? `${r.sustainedKmh} km/h <span class="lb-sub">legal gehalten</span>`
+          ? `<div class="lb-speed">${r.sustainedKmh}<small>km/h</small></div>`
           : `<span class="score-chip ${scoreClass(r.score)}">${r.score}</span>`;
-        return `<div class="item"><div class="lb-row">
-          <div class="lb-rank">${medal(i)}</div>
-          <div class="lb-main">
-            <div class="lb-name">${shield(r.segmentId || $("#boardSegment").value)}${esc(r.nickname)}
-              ${r.demo ? `<span class="badge demo">Demo</span>` : ``}
-              ${r.online ? `<span class="badge demo">Online</span>` : ``}
-              ${r.mine ? `<span class="badge mine">Du</span>` : ``}
+        // Distance to the leader — without it, every place below first is just
+        // an unranked list of names.
+        const behind = sort === "legalSpeed"
+          ? lead.sustainedKmh - r.sustainedKmh
+          : lead.score - r.score;
+        const delta = i === 0
+          ? `<div class="lb-delta lead">Führend</div>`
+          : `<div class="lb-delta">−${behind}${sort === "legalSpeed" ? " km/h" : " Pkt"}</div>`;
+        return `<div class="item lb-item${i === 0 ? " first" : ""}${r.mine ? " you" : ""}">
+          <div class="lb-row">
+            <div class="lb-rank r${Math.min(i + 1, 4)}">${i + 1}</div>
+            <div class="lb-main">
+              <div class="lb-name">${esc(r.nickname)}
+                ${r.demo ? `<span class="badge demo">Demo</span>` : ``}
+                ${r.online ? `<span class="badge demo">Online</span>` : ``}
+                ${r.mine ? `<span class="badge mine">Du</span>` : ``}
+              </div>
+              <div class="lb-sub">⌀ ${r.avgKmh} · gehalten ${r.sustainedKmh} km/h · ${r.hardBraking}× hart gebremst</div>
+              ${delta}
             </div>
-            <div class="lb-sub">⌀ ${r.avgKmh} km/h · gehalten ${r.sustainedKmh} km/h · ${r.hardBraking} starke Bremsungen</div>
+            <div>${primary}</div>
           </div>
-          <div>${primary}</div>
-        </div></div>`;
+        </div>`;
       })
       .join("");
   }
-  function medal(i) { return ["🥇", "🥈", "🥉"][i] || i + 1; }
 
   // Route badge in the colours German signage actually uses: blue for the
   // Autobahn, yellow for Bundes-/Landstraßen. Falls back to blue for the

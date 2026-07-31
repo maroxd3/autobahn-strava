@@ -244,7 +244,7 @@
     return `<div class="item" data-id="${t.id}">
       <div class="top">
         <div>
-          <div class="seg">${esc(t.segmentName)}</div>
+          <div class="seg">${segLabel(t.segmentId, t.segmentName)}</div>
           <div class="sub">${fmtDate(t.createdAt)} · ${(t.distanceM / 1000).toFixed(1)} km · ⌀ ${Math.round(t.avgKmh)} km/h</div>
         </div>
         <span class="score-chip ${scoreClass(t.score.total)}">${t.score.total}</span>
@@ -268,12 +268,12 @@
     box.innerHTML = `
       <div class="top" style="margin-bottom:12px">
         <div>
-          <div class="seg" style="font-size:18px">${esc(t.segmentName)}</div>
+          <div class="seg" style="font-size:18px">${segLabel(t.segmentId, t.segmentName)}</div>
           <div class="sub">${fmtDate(t.createdAt)} · ${t.mode === "track" ? "Track-Modus" : "Öffentliche Straße"}</div>
         </div>
         <span class="score-chip ${scoreClass(t.score.total)}">${t.score.total}</span>
       </div>
-      ${speedChartSVG(t.speedTrack)}
+      ${speedChartSVG(t.speedTrack, t.segmentId ? (Segments.byId(t.segmentId) || {}).limitKmh : null)}
       <div class="comp-bars">
         ${bar("Legalität", c.lawfulness)}
         ${bar("Ruhe / Smoothness", c.smoothness)}
@@ -353,28 +353,57 @@
   function kv(k, v) { return `<div class="kv"><span>${k}</span><b>${v}</b></div>`; }
 
   // SVG speed graph from downsampled speed track.
-  function speedChartSVG(track) {
+  // Speed over time, drawn against the limit the drive was actually judged by —
+  // a bare line says nothing about whether the driving was good. Stretches above
+  // the limit are drawn red, and hard braking is marked where it happened, so
+  // the chart shows the same story the score does.
+  function speedChartSVG(track, limitKmh) {
     if (!track || track.length < 2) return "";
-    const W = 600, HGT = 120, pad = 6;
-    const maxV = Math.max(60, ...track.map((p) => p.v));
+    const W = 600, H = 132, padX = 8, padTop = 12, padBot = 10;
+    const ref = limitKmh || Score.RICHTGESCHWINDIGKEIT;
+    const maxV = Math.max(ref * 1.18, ...track.map((p) => p.v));
     const maxT = track[track.length - 1].t || 1;
-    const pts = track
-      .map((p) => {
-        const x = pad + (p.t / maxT) * (W - 2 * pad);
-        const y = HGT - pad - (p.v / maxV) * (HGT - 2 * pad);
-        return x.toFixed(1) + "," + y.toFixed(1);
-      })
-      .join(" ");
-    // 130 km/h Richtgeschwindigkeit reference line.
-    const yRef = HGT - pad - (130 / maxV) * (HGT - 2 * pad);
-    const refLine = 130 <= maxV
-      ? `<line x1="${pad}" y1="${yRef.toFixed(1)}" x2="${W - pad}" y2="${yRef.toFixed(1)}" stroke="#ff9f43" stroke-dasharray="4 4" stroke-width="1"/>
-         <text x="${W - pad}" y="${(yRef - 4).toFixed(1)}" fill="#ff9f43" font-size="10" text-anchor="end">130 (Richtgeschw.)</text>`
-      : "";
-    return `<svg class="chart" viewBox="0 0 ${W} ${HGT}" preserveAspectRatio="none">
-      ${refLine}
-      <polyline points="${pts}" fill="none" stroke="#3ea6ff" stroke-width="2" />
-    </svg>`;
+    const X = (t) => padX + (t / maxT) * (W - 2 * padX);
+    const Y = (v) => H - padBot - (v / maxV) * (H - padTop - padBot);
+    const base = H - padBot;
+
+    const pts = track.map((p) => `${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`);
+    const area = `M ${X(track[0].t).toFixed(1)},${base} L ${pts.join(" L ")} L ${X(maxT).toFixed(1)},${base} Z`;
+
+    // Contiguous runs above the limit, each drawn as its own red polyline.
+    const over = [];
+    let run = [];
+    for (const p of track) {
+      if (p.v > ref) run.push(`${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`);
+      else if (run.length) { over.push(run); run = []; }
+    }
+    if (run.length) over.push(run);
+
+    const yRef = Y(ref);
+    const brakes = (typeof Replay !== "undefined" ? Replay.brakePoints(track) : [])
+      .map((t) => `<line x1="${X(t).toFixed(1)}" y1="${base}" x2="${X(t).toFixed(1)}" y2="${(base - 10).toFixed(1)}" stroke="#e5484d" stroke-width="2" opacity=".85"/>`)
+      .join("");
+
+    return `<div class="chart-wrap">
+      <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="spd" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#ffcc00" stop-opacity=".38"/>
+            <stop offset="100%" stop-color="#ffcc00" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="${area}" fill="url(#spd)"/>
+        <line x1="${padX}" y1="${yRef.toFixed(1)}" x2="${W - padX}" y2="${yRef.toFixed(1)}"
+              stroke="#f5a623" stroke-dasharray="5 5" stroke-width="1.2" opacity=".75"/>
+        <polyline points="${pts.join(" ")}" fill="none" stroke="#ffcc00" stroke-width="2.2"
+                  stroke-linejoin="round" stroke-linecap="round"/>
+        ${over.map((r) => r.length > 1
+          ? `<polyline points="${r.join(" ")}" fill="none" stroke="#e5484d" stroke-width="2.6" stroke-linecap="round"/>`
+          : "").join("")}
+        ${brakes}
+      </svg>
+      <span class="chart-ref">${ref} km/h${limitKmh ? " Limit" : " Richtgeschw."}</span>
+    </div>`;
   }
 
   // ---- Ghost Replay ---------------------------------------------------------
@@ -518,7 +547,7 @@
         return `<div class="item"><div class="lb-row">
           <div class="lb-rank">${medal(i)}</div>
           <div class="lb-main">
-            <div class="lb-name">${esc(r.nickname)}
+            <div class="lb-name">${shield(r.segmentId || $("#boardSegment").value)}${esc(r.nickname)}
               ${r.demo ? `<span class="badge demo">Demo</span>` : ``}
               ${r.online ? `<span class="badge demo">Online</span>` : ``}
               ${r.mine ? `<span class="badge mine">Du</span>` : ``}
@@ -531,6 +560,32 @@
       .join("");
   }
   function medal(i) { return ["🥇", "🥈", "🥉"][i] || i + 1; }
+
+  // Route badge in the colours German signage actually uses: blue for the
+  // Autobahn, yellow for Bundes-/Landstraßen. Falls back to blue for the
+  // hand-curated "A2"-style entries, which are all Autobahn.
+  function shield(segOrTrip) {
+    const seg = typeof segOrTrip === "string" ? Segments.byId(segOrTrip) : segOrTrip;
+    if (!seg) return "";
+    const code = seg.autobahn || "";
+    // Curated segments predate roadType, so fall back to the limit: a segment
+    // judged at 100 or less is not being treated as free Autobahn, whatever its
+    // code says, and a blue shield there would contradict how it is scored.
+    // A posted 120 on a real Autobahn (A81) still counts as blue.
+    const yellow =
+      seg.roadType === "landstrasse" ||
+      seg.roadType === "stadt" ||
+      /^[BL]/.test(code) ||
+      (typeof seg.limitKmh === "number" && seg.limitKmh <= 100);
+    return `<span class="shield ${yellow ? "bund" : "bab"}">${esc(code)}</span>`;
+  }
+
+  // "A2 Hannover → Braunschweig" → shield + the name on its own.
+  function segLabel(segmentId, fallbackName) {
+    const seg = segmentId ? Segments.byId(segmentId) : null;
+    if (!seg) return esc(fallbackName || "Kein Segment erkannt");
+    return `${shield(seg)}<span>${esc(seg.name)}</span>`;
+  }
 
   // ---- Settings -------------------------------------------------------------
   function initSettings() {

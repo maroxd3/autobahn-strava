@@ -1,27 +1,48 @@
+/* Autobahn Strava — visual language borrowed from German road signage.
+ *
+ * The app already knows whether you were on an Autobahn or a Bundesstraße, and
+ * German signage encodes exactly that distinction in colour: blue shields for
+ * the BAB, yellow for Bundesstraßen, a white disc with a coloured ring for
+ * limits. Reusing that vocabulary means the interface reads as roads rather than
+ * as a dashboard, and every colour carries meaning instead of decoration.
+ */
+
 :root {
-  --bg: #0e1116;
-  --panel: #161b22;
-  --panel-2: #1d242e;
-  --line: #2a323d;
-  --text: #e8edf3;
-  --muted: #97a3b2;
-  --accent: #ffcc00; /* Autobahn sign yellow */
-  --accent-2: #3ea6ff;
-  --good: #35c46a;
-  --warn: #ff9f43;
-  --bad: #ff5c5c;
-  --radius: 14px;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --bg: #0a0d12;
+  --panel: #131922;
+  --panel-2: #1a212c;
+  --line: #262f3c;
+  --line-soft: #1e2632;
+  --text: #eef2f7;
+  --muted: #909cab;
+
+  --accent: #ffcc00;      /* Richtgeschwindigkeit yellow */
+  --accent-2: #4aa8ff;
+  --sign-blue: #0b4ea2;   /* Autobahn shield */
+  --sign-yellow: #f2c200; /* Bundesstraße shield */
+  --good: #2fbf62;
+  --warn: #f5a623;
+  --bad: #e5484d;
+
+  --radius: 16px;
+  font-family: system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 500px at 50% -10%, #16202c 0%, transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
-  padding-bottom: 72px;
+  padding-bottom: 78px;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ---- Chrome ------------------------------------------------------------- */
 
 .topbar {
   position: sticky;
@@ -30,81 +51,145 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px calc(14px + env(safe-area-inset-top, 0));
+  padding: 14px 16px;
   padding-top: max(14px, env(safe-area-inset-top, 0));
-  background: linear-gradient(180deg, #12161c, rgba(18, 22, 28, 0.85));
-  border-bottom: 1px solid var(--line);
+  background: rgba(10, 13, 18, 0.82);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line-soft);
 }
-.brand { font-weight: 800; letter-spacing: 0.2px; }
+.brand { font-weight: 800; letter-spacing: -0.3px; font-size: 17px; }
 .brand span { color: var(--accent); }
 .who {
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--muted);
   background: var(--panel-2);
   border: 1px solid var(--line);
-  padding: 5px 10px;
+  padding: 6px 11px;
   border-radius: 999px;
 }
 
 main { padding: 16px; max-width: 640px; margin: 0 auto; }
 .tab { display: none; }
-.tab.active { display: block; animation: fade 0.18s ease; }
-@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+.tab.active { display: block; animation: rise 0.22s cubic-bezier(0.2, 0.7, 0.3, 1); }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
 
-h2 { font-size: 20px; margin: 4px 0 14px; }
-h3 { font-size: 15px; margin: 0 0 6px; }
+h2 { font-size: 22px; margin: 4px 0 16px; letter-spacing: -0.4px; }
+h3 { font-size: 15px; margin: 0 0 8px; letter-spacing: -0.2px; }
 
-.card {
-  background: var(--panel);
+/* Cards get a hairline top highlight so they read as raised, not as flat
+   rectangles stacked on a flat background. */
+.card, .item {
+  background: linear-gradient(180deg, #161d27 0%, var(--panel) 60%);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 8px 22px rgba(0, 0, 0, 0.3);
 }
+.card { padding: 16px; margin-bottom: 14px; }
 
-/* Mode selector */
-.mode-row { display: flex; gap: 8px; margin-bottom: 8px; }
+/* ---- Road-sign primitives ----------------------------------------------- */
+
+/* The score, drawn as a round sign: white face, ring coloured by quality. */
+.score-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #f6f8fb;
+  color: #0a0d12;
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.5px;
+  box-shadow: 0 0 0 4px var(--ring, var(--muted)), 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.score-good { --ring: var(--good); }
+.score-mid  { --ring: var(--warn); }
+.score-low  { --ring: var(--bad); }
+.modal-box .score-chip { width: 74px; height: 74px; font-size: 31px; box-shadow: 0 0 0 6px var(--ring), 0 6px 20px rgba(0, 0, 0, 0.5); }
+
+/* Route shields: blue = Autobahn, yellow = Bundes-/Landstraße, mirroring the
+   real signs. Colour is chosen from the segment's road type, not decoration. */
+.shield {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.shield.bab  { background: var(--sign-blue); color: #fff; }
+.shield.bund { background: var(--sign-yellow); color: #16181c; }
+
+/* ---- Mode selector ------------------------------------------------------- */
+.mode-row { display: flex; gap: 8px; margin-bottom: 10px; }
 .mode-pill { flex: 1; }
 .mode-pill input { position: absolute; opacity: 0; }
 .mode-pill span {
   display: block;
   text-align: center;
-  padding: 10px;
+  padding: 11px 8px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--panel-2);
   font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
 }
 .mode-pill input:checked + span {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--accent);
 }
-.mode-hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+.mode-hint { color: var(--muted); font-size: 13px; margin: 0 0 14px; line-height: 1.45; }
 
-/* Live readout */
-.live { text-align: center; padding: 18px 0 10px; }
-.live-speed b { font-size: 64px; font-variant-numeric: tabular-nums; line-height: 1; }
-.live-speed small { display: block; color: var(--muted); margin-top: 4px; }
-.live-stats {
-  display: flex; justify-content: space-around; margin-top: 16px;
-  border-top: 1px solid var(--line); padding-top: 14px;
+/* ---- Live readout — the driving view, so the speed dominates ------------- */
+.live { text-align: center; padding: 26px 0 12px; }
+.live-speed b {
+  display: block;
+  font-size: clamp(76px, 24vw, 116px);
+  font-weight: 800;
+  line-height: 0.86;
+  letter-spacing: -4px;
+  background: linear-gradient(180deg, #ffffff 30%, #b9c6d6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
-.live-stats span { font-size: 22px; font-variant-numeric: tabular-nums; }
-.live-stats small { display: block; color: var(--muted); font-size: 12px; }
+.live-speed small {
+  display: block;
+  color: var(--muted);
+  margin-top: 12px;
+  font-size: 12.5px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.live-stats {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 20px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 16px;
+}
+.live-stats > div { text-align: center; }
+.live-stats span { font-size: 23px; font-weight: 700; }
+.live-stats small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 3px; letter-spacing: 0.3px; }
 
 .safety-note {
-  background: rgba(255, 159, 67, 0.1);
-  border: 1px solid rgba(255, 159, 67, 0.35);
-  color: #ffd9ad;
+  background: rgba(245, 166, 35, 0.09);
+  border: 1px solid rgba(245, 166, 35, 0.3);
+  border-left: 3px solid var(--warn);
+  color: #f6d9ae;
   font-size: 13px;
   border-radius: 10px;
-  padding: 10px 12px;
-  margin: 14px 0;
-  line-height: 1.4;
+  padding: 11px 13px;
+  margin: 16px 0;
+  line-height: 1.5;
 }
 
+/* ---- Buttons ------------------------------------------------------------- */
 .btn-row { display: flex; gap: 10px; }
 .btn {
   flex: 1;
@@ -112,105 +197,124 @@ h3 { font-size: 15px; margin: 0 0 6px; }
   background: var(--panel-2);
   color: var(--text);
   font-size: 16px;
-  font-weight: 600;
-  padding: 14px;
-  border-radius: 12px;
+  font-weight: 700;
+  padding: 15px;
+  border-radius: 13px;
   cursor: pointer;
   width: 100%;
+  letter-spacing: -0.2px;
+  transition: transform 0.08s, filter 0.15s;
 }
-.btn:active { transform: translateY(1px); }
-.btn-primary { background: var(--accent); color: #1a1a1a; border-color: var(--accent); }
+.btn:active { transform: translateY(1px) scale(0.995); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.btn-primary {
+  background: linear-gradient(180deg, #ffd633, var(--accent));
+  color: #1a1a1a;
+  border-color: #d9ad00;
+  box-shadow: 0 6px 18px rgba(255, 204, 0, 0.16);
+}
 .btn-danger { background: var(--bad); color: #fff; border-color: var(--bad); }
 .btn-ghost { background: transparent; margin-top: 10px; color: var(--muted); }
 
-.tiny { font-size: 12px; }
+.tiny { font-size: 12px; line-height: 1.5; }
 .muted { color: var(--muted); }
 .row-inline { display: flex; gap: 8px; align-items: center; }
 
-/* Lists */
-.list { display: flex; flex-direction: column; gap: 10px; }
-.item {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px;
-  cursor: pointer;
-}
-.item .top { display: flex; justify-content: space-between; align-items: baseline; }
-.item .seg { font-weight: 700; }
-.item .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
-.item .badges { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-
-.score-chip {
-  font-weight: 800;
-  font-size: 18px;
-  padding: 2px 10px;
-  border-radius: 8px;
-}
-.score-good { background: rgba(53, 196, 106, 0.18); color: var(--good); }
-.score-mid { background: rgba(255, 159, 67, 0.18); color: var(--warn); }
-.score-low { background: rgba(255, 92, 92, 0.18); color: var(--bad); }
+/* ---- Lists --------------------------------------------------------------- */
+.list { display: flex; flex-direction: column; gap: 11px; }
+.item { padding: 14px; cursor: pointer; transition: border-color 0.15s, transform 0.08s; }
+.item:active { transform: scale(0.995); }
+.item .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.item .seg { font-weight: 700; letter-spacing: -0.2px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.item .sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+.item .badges { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
 
 .badge {
-  font-size: 11px;
+  font-size: 10.5px;
+  font-weight: 600;
   padding: 3px 8px;
   border-radius: 999px;
   border: 1px solid var(--line);
   color: var(--muted);
+  letter-spacing: 0.2px;
 }
-.badge.warn { color: var(--warn); border-color: rgba(255, 159, 67, 0.4); }
-.badge.demo { color: var(--accent-2); border-color: rgba(62, 166, 255, 0.4); }
-.badge.mine { color: var(--accent); border-color: rgba(255, 204, 0, 0.4); }
-.badge.track { color: #d59bff; border-color: rgba(213, 155, 255, 0.4); }
+.badge.warn { color: var(--warn); border-color: rgba(245, 166, 35, 0.4); }
+.badge.demo { color: var(--accent-2); border-color: rgba(74, 168, 255, 0.4); }
+.badge.mine { color: var(--accent); border-color: rgba(255, 204, 0, 0.45); background: rgba(255, 204, 0, 0.08); }
+.badge.track { color: #cf9bff; border-color: rgba(207, 155, 255, 0.4); }
 
-/* Leaderboard rows */
-.lb-row { display: flex; align-items: center; gap: 12px; }
-.lb-rank { font-size: 18px; font-weight: 800; width: 28px; color: var(--muted); text-align: center; }
-.lb-main { flex: 1; }
-.lb-name { font-weight: 600; }
-.lb-sub { color: var(--muted); font-size: 12px; }
+/* ---- Leaderboard --------------------------------------------------------- */
+.lb-row { display: flex; align-items: center; gap: 13px; }
+.lb-rank {
+  font-size: 20px;
+  font-weight: 800;
+  width: 30px;
+  color: var(--muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+.lb-main { flex: 1; min-width: 0; }
+.lb-name { font-weight: 700; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; letter-spacing: -0.2px; }
+.lb-sub { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
 
-/* Forms */
+/* ---- Forms --------------------------------------------------------------- */
 .field { display: block; margin-bottom: 14px; }
-.field > span:first-child { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.field > span:first-child {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-bottom: 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  font-weight: 600;
+}
 .input, .select {
   width: 100%;
   background: var(--panel-2);
   border: 1px solid var(--line);
   color: var(--text);
-  padding: 11px 12px;
-  border-radius: 10px;
+  padding: 12px;
+  border-radius: 11px;
   font-size: 15px;
+  font-family: inherit;
 }
 .select { cursor: pointer; }
-.toggle { display: flex; align-items: center; gap: 10px; margin: 12px 0; font-size: 14px; }
-.toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
-.danger-card { border-color: rgba(255, 92, 92, 0.35); }
+.input:focus, .select:focus { outline: none; border-color: var(--accent); }
+.toggle { display: flex; align-items: center; gap: 11px; margin: 12px 0; font-size: 14px; }
+.toggle input { width: 20px; height: 20px; accent-color: var(--accent); flex-shrink: 0; }
+.danger-card { border-color: rgba(229, 72, 77, 0.3); }
 
-/* Tab bar */
+/* ---- Tab bar ------------------------------------------------------------- */
 .tabbar {
   position: fixed;
   bottom: 0; left: 0; right: 0;
   display: flex;
-  background: #10141a;
-  border-top: 1px solid var(--line);
+  background: rgba(11, 14, 19, 0.92);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--line-soft);
   padding-bottom: env(safe-area-inset-bottom, 0);
+  z-index: 10;
 }
 .tabbar button {
   flex: 1;
   background: none;
   border: none;
   color: var(--muted);
-  padding: 12px 4px;
-  font-size: 12px;
+  padding: 13px 4px;
+  font-size: 11.5px;
+  font-weight: 600;
   cursor: pointer;
+  font-family: inherit;
+  border-top: 2px solid transparent;
+  transition: color 0.15s;
 }
-.tabbar button.active { color: var(--accent); }
+.tabbar button.active { color: var(--accent); border-top-color: var(--accent); }
 
-/* Modal */
+/* ---- Modal --------------------------------------------------------------- */
 .modal {
   position: fixed; inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.66);
+  backdrop-filter: blur(3px);
   display: flex; align-items: flex-end; justify-content: center;
   z-index: 20;
 }
@@ -219,21 +323,56 @@ h3 { font-size: 15px; margin: 0 0 6px; }
   background: var(--panel);
   width: 100%;
   max-width: 640px;
-  border-radius: 18px 18px 0 0;
+  border-radius: 20px 20px 0 0;
   border: 1px solid var(--line);
-  padding: 18px;
-  max-height: 85vh;
+  padding: 20px;
+  max-height: 88vh;
   overflow-y: auto;
+  animation: sheet 0.26s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
-@media (min-width: 560px) { .modal { align-items: center; } .modal-box { border-radius: 18px; } }
+@keyframes sheet { from { transform: translateY(24px); opacity: 0.6; } }
+@media (min-width: 560px) { .modal { align-items: center; } .modal-box { border-radius: 20px; } }
 
-/* Speed chart */
-.chart { width: 100%; height: 120px; display: block; background: var(--panel-2); border-radius: 10px; }
-.comp-bars { margin-top: 12px; }
-.comp-bar { margin-bottom: 8px; }
-.comp-bar .lab { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
-.comp-bar .track { height: 8px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
-.comp-bar .fill { height: 100%; background: var(--accent); border-radius: 999px; }
+/* ---- Chart & bars -------------------------------------------------------- */
+.chart-wrap { position: relative; }
+.chart {
+  width: 100%;
+  height: 132px;
+  display: block;
+  background: linear-gradient(180deg, #10161f, #0d1219);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+}
+/* The limit label sits in HTML rather than inside the SVG: the chart stretches
+   horizontally (preserveAspectRatio="none"), which would distort SVG text. */
+.chart-ref {
+  position: absolute;
+  top: 7px;
+  right: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--warn);
+  background: rgba(10, 13, 18, 0.7);
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.comp-bars { margin-top: 14px; }
+.comp-bar { margin-bottom: 10px; }
+.comp-bar .lab { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 5px; color: var(--muted); }
+.comp-bar .lab b { color: var(--text); font-weight: 700; }
+.comp-bar .track { height: 7px; background: #0e141c; border-radius: 999px; overflow: hidden; border: 1px solid var(--line-soft); }
+.comp-bar .fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffb800, var(--accent));
+  border-radius: 999px;
+  transition: width 0.5s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
 
-.kv { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
-.kv b { font-variant-numeric: tabular-nums; }
+.kv { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; }
+.kv:last-child { border-bottom: none; }
+.kv span { color: var(--muted); }
+.kv b { font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

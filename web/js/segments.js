@@ -44,6 +44,26 @@
       limitKmh: null,
     },
     {
+      id: "a7-b3-hannover-celle",
+      autobahn: "A7/B3",
+      name: "Hannover → Celle",
+      from: { name: "AS Hannover-Kirchhorst (A7)", lat: 52.44, lon: 9.88 },
+      to: { name: "Celle Süd", lat: 52.6, lon: 10.06 },
+      // Mixed route: a short A7 stretch, then the B3 north to Celle. The B3 is a
+      // Bundesstraße — 100 km/h general limit outside built-up areas — so we score
+      // the whole segment against the stricter 100 rather than treating it as
+      // derestricted Autobahn. Erring strict is the safe default on a mixed route.
+      limitKmh: 100,
+    },
+    {
+      id: "b3-a7-celle-hannover",
+      autobahn: "B3/A7",
+      name: "Celle → Hannover",
+      from: { name: "Celle Süd", lat: 52.6, lon: 10.06 },
+      to: { name: "AS Hannover-Kirchhorst (A7)", lat: 52.44, lon: 9.88 },
+      limitKmh: 100,
+    },
+    {
       id: "a81-stuttgart-heilbronn",
       autobahn: "A81",
       name: "Stuttgart → Heilbronn",

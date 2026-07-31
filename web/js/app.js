@@ -29,9 +29,44 @@
         ? "Track-Modus: Tempo/Beschleunigung nur auf gesperrter/privater Strecke. Zählt nicht für die öffentliche Rangliste."
         : "Bewertet nur legales, ruhiges & effizientes Fahren. Kein Tempo-Ranking.";
       $("#safetyNote").hidden = track;
+      // Track mode has no public segments, so declaring a route is meaningless.
+      $("#routeField").hidden = track;
+      $("#routeHint").hidden = track;
     })
   );
   const currentMode = () => document.querySelector('input[name="mode"]:checked').value;
+
+  // ---- Declared route -------------------------------------------------------
+  // Saying where you're going up front beats guessing after the fact: it fixes
+  // which leaderboard the trip belongs to, and lets us show the applicable limit
+  // before you set off rather than after.
+  function initRouteControls() {
+    const sel = $("#routeSelect");
+    sel.innerHTML =
+      `<option value="">Automatisch erkennen</option>` +
+      Segments.list.map((s) => `<option value="${s.id}">${s.autobahn} ${s.name}</option>`).join("");
+    sel.addEventListener("change", updateRouteHint);
+    updateRouteHint();
+  }
+
+  function declaredRoute() {
+    return Segments.byId($("#routeSelect").value) || null;
+  }
+
+  function updateRouteHint() {
+    const seg = declaredRoute();
+    const el = $("#routeHint");
+    $("#btnSim").textContent = `▷ Beispiel-Fahrt simulieren (${seg ? seg.autobahn : "A2"})`;
+    // Point the leaderboard at the route you just declared.
+    if (seg) $("#boardSegment").value = seg.id;
+    if (!seg) {
+      el.textContent = "Ohne Auswahl wird die Strecke nach der Fahrt automatisch erkannt.";
+      return;
+    }
+    el.textContent = seg.limitKmh
+      ? `${seg.autobahn} ${seg.name} — ${seg.limitKmh} km/h Limit. Wertung gegen dieses Limit.`
+      : `${seg.autobahn} ${seg.name} — kein festes Limit, Richtgeschwindigkeit ${Score.RICHTGESCHWINDIGKEIT} km/h.`;
+  }
 
   // ---- Profile header -------------------------------------------------------
   function refreshWho() {
@@ -101,7 +136,13 @@
     const profile = Store.getProfile();
     const samples = profile.trimEnds ? Store.trimEnds(rawSamples, 500) : rawSamples;
 
-    const segment = mode === "public" ? Segments.detectSegment(samples) : null;
+    // A declared route only counts if the recorded track actually backs it up —
+    // otherwise you could pick an easy segment and drive somewhere else entirely.
+    // When the two disagree, the GPS wins and we say so on the trip.
+    const detected = mode === "public" ? Segments.detectSegment(samples) : null;
+    const declared = mode === "public" ? declaredRoute() : null;
+    const routeMismatch = !!declared && (!detected || detected.id !== declared.id);
+    const segment = detected;
 
     const metrics = {
       distanceM: Geo.totalDistance(samples),
@@ -122,6 +163,8 @@
       mode,
       segmentId: segment ? segment.id : null,
       segmentName: segment ? segment.autobahn + " " + segment.name : "Kein Segment erkannt",
+      declaredSegmentId: declared ? declared.id : null,
+      routeMismatch,
       private: profile.defaultPrivate,
       eligible: mode === "public" && !!segment && cheat.ok,
       cheatFlags: cheat.flags,
@@ -333,7 +376,11 @@
   // speed chart are all mutually consistent. Gentle ~120 km/h cruise with one
   // mild traffic slowdown and start/stop ramps — a clean, cheat-free trip.
   function simulateDrive() {
-    const seg = Segments.byId("a2-hannover-braunschweig");
+    // Simulate whichever route you declared, so you can preview a segment's
+    // leaderboard before ever driving it. Cruise sits just under the applicable
+    // limit — the simulated trip should be a clean, lawful one.
+    const seg = declaredRoute() || Segments.byId("a2-hannover-braunschweig");
+    const cruise = seg.limitKmh ? seg.limitKmh - 5 : 120;
     const from = seg.from, to = seg.to;
     const D = Segments.haversine(from, to); // straight-line metres
     const dt = 2; // seconds between samples
@@ -344,7 +391,7 @@
     while (dist < D) {
       const f = dist / D;
       // Cruise ~120 with a smooth wobble; dip to ~70 in a mid traffic patch.
-      let kmh = 120 + 7 * Math.sin(f * 8);
+      let kmh = cruise + 7 * Math.sin(f * 8);
       if (f > 0.55 && f < 0.66) kmh -= 50;
       if (f < 0.04) kmh = 30 + f * 2000; // acceleration ramp
       if (f > 0.96) kmh = 30 + (1 - f) * 2000; // deceleration ramp
@@ -376,7 +423,8 @@
 
   // ---- Boot -----------------------------------------------------------------
   refreshWho();
-  initBoardControls();
+  initBoardControls(); // before initRouteControls — route sync writes to its <select>
+  initRouteControls();
   initSettings();
   renderTrips();
 })();

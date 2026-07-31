@@ -115,6 +115,12 @@
     { segmentId: "a2-braunschweig-hannover", nickname: "RuhigFalke28", score: 90, avgKmh: 116, sustainedKmh: 131, hardBraking: 0, mode: "public", demo: true },
     { segmentId: "a7-hannover-hildesheim", nickname: "StetigLuchs55", score: 86, avgKmh: 109, sustainedKmh: 124, hardBraking: 1, mode: "public", demo: true },
     { segmentId: "a81-stuttgart-heilbronn", nickname: "VernünftigIgel11", score: 92, avgKmh: 108, sustainedKmh: 119, hardBraking: 0, mode: "public", demo: true },
+    { segmentId: "a7-b3-hannover-celle", nickname: "RuhigDachs31", score: 91, avgKmh: 88, sustainedKmh: 99, hardBraking: 0, mode: "public", demo: true },
+    { segmentId: "a7-b3-hannover-celle", nickname: "SanftOtter08", score: 84, avgKmh: 92, sustainedKmh: 103, hardBraking: 1, mode: "public", demo: true },
+    // Over the B3's 100 limit: ranks last on score, and the "schnellste legale
+    // Fahrt" board filters it out entirely rather than crowning it.
+    { segmentId: "a7-b3-hannover-celle", nickname: "EiligSpecht77", score: 62, avgKmh: 97, sustainedKmh: 118, hardBraking: 3, mode: "public", demo: true },
+    { segmentId: "b3-a7-celle-hannover", nickname: "StetigReh44", score: 89, avgKmh: 86, sustainedKmh: 97, hardBraking: 0, mode: "public", demo: true },
   ];
 
   // Leaderboard for a segment: demo ghosts + this device's own eligible trips.

@@ -12,6 +12,17 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9B%A3%EF%B8%8F%3C/text%3E%3C/svg%3E"
     />
+
+    <!-- Installable app: home-screen icon, standalone window, offline shell. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#0f1216" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <!-- iOS ignores the manifest's display mode; these are what make it open
+         without Safari chrome once added to the home screen. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Autobahn Strava" />
     <link rel="stylesheet" href="css/app.css" />
   </head>
   <body>
@@ -170,5 +181,14 @@
     <script src="js/cloud.js"></script>
     <script src="js/replay.js"></script>
     <script src="js/app.js"></script>
+    <script>
+      // Registered late and failure-tolerant: offline support is a bonus, and a
+      // service-worker problem must never stop the app from recording a drive.
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("sw.js").catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>

@@ -8,7 +8,7 @@
 //
 // Bump CACHE whenever the shell changes so old entries are evicted.
 
-const CACHE = "autobahn-strava-v1";
+const CACHE = "autobahn-strava-v2";
 
 const SHELL = [
   "./index.html",

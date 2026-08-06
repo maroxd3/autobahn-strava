@@ -57,14 +57,17 @@
     return clamp(100 - (mean / 2.5) * 100, 0, 100);
   }
 
-  // Efficiency 0..100: rewards steady cruising (low speed variance around the
-  // trip's own mean), the fuel-friendly pattern.
+  // Efficiency 0..100: rewards steady cruising (low speed variance), the
+  // fuel-friendly pattern. Judged over CRUISE phases only (> 30 km/h): traffic
+  // lights, jams and junction stops are the road's fault, not the driver's, and
+  // must not tank the score. Returns null when there is too little cruising to
+  // judge — the composite then redistributes the weight.
   function efficiencyScore(samples) {
     const { speeds } = kinematics(samples);
-    const moving = speeds.filter((v) => v > 5);
-    if (moving.length < 2) return 100;
-    const mean = moving.reduce((a, b) => a + b, 0) / moving.length;
-    const variance = moving.reduce((a, b) => a + (b - mean) ** 2, 0) / moving.length;
+    const cruise = speeds.filter((v) => v > 30);
+    if (cruise.length < 20) return null;
+    const mean = cruise.reduce((a, b) => a + b, 0) / cruise.length;
+    const variance = cruise.reduce((a, b) => a + (b - mean) ** 2, 0) / cruise.length;
     const cv = mean > 0 ? Math.sqrt(variance) / mean : 1; // coefficient of variation
     return clamp(100 - cv * 180, 0, 100);
   }
@@ -107,7 +110,12 @@
     // Braking → sub-score: 0 events = 100, degrade per event.
     const brakingScore = clamp(100 - braking * 12, 0, 100);
 
-    const total = law * 0.4 + smooth * 0.25 + brakingScore * 0.2 + eff * 0.15;
+    // Too little cruising to judge efficiency (pure city hops): drop the
+    // component and renormalise the remaining weights instead of guessing.
+    const total =
+      eff === null
+        ? (law * 0.4 + smooth * 0.25 + brakingScore * 0.2) / 0.85
+        : law * 0.4 + smooth * 0.25 + brakingScore * 0.2 + eff * 0.15;
 
     return {
       total: Math.round(total),
@@ -115,7 +123,7 @@
         lawfulness: Math.round(law),
         smoothness: Math.round(smooth),
         calmBraking: Math.round(brakingScore),
-        efficiency: Math.round(eff),
+        efficiency: eff === null ? null : Math.round(eff),
       },
       hardBrakingEvents: braking,
     };

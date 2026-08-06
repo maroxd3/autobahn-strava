@@ -88,8 +88,17 @@
     return this;
   };
 
+  // Samples with worse accuracy than this pollute distance, scoring and the
+  // hard-braking detector (a single 200 m outlier reads as an emergency stop).
+  // Better no sample than a lying one.
+  const MAX_ACCURACY_M = 50;
+
   Recorder.prototype._push = function (pos) {
     const c = pos.coords;
+    if (typeof c.accuracy === "number" && c.accuracy > MAX_ACCURACY_M) {
+      this.onSample({ badAccuracy: c.accuracy });
+      return;
+    }
     const prev = this.samples[this.samples.length - 1];
     let spd = typeof c.speed === "number" && c.speed >= 0 ? c.speed : null;
     let src = spd !== null ? "gps" : "derived";

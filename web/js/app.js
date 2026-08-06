@@ -99,6 +99,25 @@
   $("#btnStop").addEventListener("click", stopRecording);
   $("#btnSim").addEventListener("click", simulateDrive);
 
+  // Keep the screen awake during a recording. Without this, the "leave the
+  // screen on" warning asks the user to fight their own phone; with it, the
+  // phone simply stays on. Re-acquired on tab return because the OS silently
+  // releases the lock whenever the page loses visibility.
+  let wakeLock = null;
+  async function acquireWakeLock() {
+    try {
+      if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
+    } catch (e) {
+      /* not granted (e.g. low battery) — recording still works, screen may sleep */
+    }
+  }
+  function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (recorder && document.visibilityState === "visible") acquireWakeLock();
+  });
+
   function startRecording() {
     try {
       recorder = new Geo.Recorder(onSample).start();
@@ -107,6 +126,7 @@
       return;
     }
     startedAt = Date.now();
+    acquireWakeLock();
     $("#btnStart").hidden = true;
     $("#btnStop").hidden = false;
     $("#btnSim").hidden = true;
@@ -116,6 +136,11 @@
   function onSample(ev) {
     if (ev.error) {
       $("#liveAcc").textContent = "!";
+      return;
+    }
+    if (ev.badAccuracy) {
+      // Sample rejected for poor accuracy — show why, record nothing.
+      $("#liveAcc").textContent = Math.round(ev.badAccuracy) + "⚠";
       return;
     }
     const s = ev.sample;
@@ -135,6 +160,7 @@
     const samples = recorder ? recorder.stop() : [];
     clearInterval(ticker);
     recorder = null;
+    releaseWakeLock();
     resetLive();
     $("#btnStart").hidden = false;
     $("#btnStop").hidden = true;
@@ -280,7 +306,9 @@
         ${bar("Legalität", c.lawfulness)}
         ${bar("Ruhe / Smoothness", c.smoothness)}
         ${bar("Sanftes Bremsen", c.calmBraking)}
-        ${bar("Effizienz", c.efficiency)}
+        ${c.efficiency !== null && c.efficiency !== undefined
+          ? bar("Effizienz", c.efficiency)
+          : `<p class="tiny muted" style="margin:6px 0 0">Effizienz: zu wenig Cruise-Anteil zum Bewerten — nicht gewertet.</p>`}
       </div>
       <div style="margin-top:12px">
         ${kv("Distanz", (t.distanceM / 1000).toFixed(1) + " km")}
@@ -291,6 +319,7 @@
         ${kv("GPS-Genauigkeit (Median)", t.medianAccuracy !== null ? "± " + Math.round(t.medianAccuracy) + " m" : "–")}
       </div>
       ${t.cheatFlags && t.cheatFlags.length ? `<p class="tiny" style="color:var(--warn);margin-top:10px">⚠︎ Plausibilitätshinweise: ${t.cheatFlags.join(", ")} — nicht für die Rangliste gewertet.</p>` : ``}
+      ${t.routeMismatch ? `<p class="tiny" style="color:var(--warn);margin-top:10px">⚠︎ Deine deklarierte Route passt nicht zur gefahrenen Strecke — gewertet wurde, was das GPS sagt.</p>` : ``}
       ${!t.eligible && t.mode === "public" && (!t.cheatFlags || !t.cheatFlags.length) && !t.segmentId ? `<p class="tiny muted" style="margin-top:10px">Kein bekanntes Autobahn-Segment erkannt — zählt nicht für eine Rangliste.</p>` : ``}
       ${ghostRival(t) ? `
         <div id="replayWrap" style="margin-top:14px" hidden>
@@ -305,7 +334,8 @@
         </button>
       ` : ``}
       <div class="btn-row" style="margin-top:16px">
-        <button class="btn" id="mPriv">${t.private ? "🌍 Teilen" : "🔒 Privat"}</button>
+        <button class="btn" id="mShare">📤 Score teilen</button>
+        <button class="btn" id="mPriv">${t.private ? "🌍 Freigeben" : "🔒 Privat"}</button>
         <button class="btn btn-danger" id="mDel">Löschen</button>
       </div>
       <button class="btn btn-ghost" id="mClose">Schließen</button>
@@ -317,6 +347,20 @@
       if (confirm("Diese Fahrt löschen?")) { Store.deleteTrip(t.id); closeModal(); renderTrips(); }
     });
     if ($("#mReplay")) $("#mReplay").addEventListener("click", () => startGhostReplay(t));
+    $("#mShare").addEventListener("click", async () => {
+      // The viral path: score as a brag + the app link, into the OS share sheet.
+      const text = `Legal-Drive-Score ${t.score.total}/100 auf ${t.segmentName} 🛣️ — schlag mich (legal):`;
+      const url = "https://autobahn-strava.web.app";
+      try {
+        if (navigator.share) await navigator.share({ title: "Autobahn Strava", text, url });
+        else {
+          await navigator.clipboard.writeText(text + " " + url);
+          alert("In die Zwischenablage kopiert!");
+        }
+      } catch (e) {
+        /* user cancelled the share sheet — fine */
+      }
+    });
     if ($("#mPublish") && !t.publishedId) {
       $("#mPublish").addEventListener("click", async () => {
         const btn = $("#mPublish");
@@ -453,9 +497,15 @@
     $("#replayResult").textContent = "Läuft …";
     $("#mReplay").textContent = "↻ Replay wiederholen";
 
+    // Pace every replay to ~20 s of watching, whether the drive took 12 minutes
+    // or 2 hours — a fixed 60× made long drives unwatchable.
+    const longestSec = Math.max(t.durationSec || 0, rivalDur || 0, 60);
+    const speedUp = Math.min(400, Math.max(30, Math.round(longestSec / 20)));
+
     stopReplay = Replay.race($("#replayCanvas"), {
       yourTrack: t.speedTrack,
       rivalTrack,
+      speedUp,
       rivalLabel: rival.nickname,
       onEnd: (r) => {
         const gap = Math.abs(Math.round(r.gap));
